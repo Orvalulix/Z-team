@@ -1,0 +1,20 @@
+{
+  "app": "Z-Team Operations Web",
+  "version": "V15.4-Web",
+  "checked_at": null,
+  "sources": {
+    "strata": {
+      "last_attempt_ok": false,
+      "last_success": null,
+      "patch": null,
+      "error": "Première synchronisation non effectuée"
+    },
+    "forge": {
+      "last_attempt_ok": false,
+      "last_success": null,
+      "patch": null,
+      "error": "Première synchronisation non effectuée"
+    }
+  },
+  "notes": "Salvage manuel; méthodes de raffinage estimatives; démontage ne garantit pas de rendement réel."
+}
