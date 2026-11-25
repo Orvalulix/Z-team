@@ -1,5 +1,31 @@
 {
-  "checked_at": null,
-  "sources": {},
-  "note": "Rapport disponible après la première exécution des mises à jour GitHub Actions."
+  "checked_at": "2026-11-25T21:48:25Z",
+  "sources": {
+    "strata": {
+      "source": "strata",
+      "old_patch": null,
+      "new_patch": "4.10.3",
+      "old_records": 0,
+      "new_records": 39,
+      "added": 39,
+      "removed": 0,
+      "modified": 0,
+      "review_required": false,
+      "reasons": [],
+      "comparison": "Premier référentiel validé : pas d’historique à comparer."
+    },
+    "forge": {
+      "source": "forge",
+      "old_patch": null,
+      "new_patch": "4.10.3",
+      "old_records": 0,
+      "new_records": 1633,
+      "added": 1633,
+      "removed": 0,
+      "modified": 0,
+      "review_required": false,
+      "reasons": [],
+      "comparison": "Premier référentiel validé : pas d’historique à comparer."
+    }
+  }
 }

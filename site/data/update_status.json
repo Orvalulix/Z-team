@@ -1,20 +1,45 @@
 {
   "app": "Z-Team Operations Web",
-  "version": "V15.4-Web",
-  "checked_at": null,
+  "version": "V15.6-Web",
+  "checked_at": "2026-11-25T21:48:25Z",
   "sources": {
     "strata": {
-      "last_attempt_ok": false,
-      "last_success": null,
-      "patch": null,
-      "error": "Première synchronisation non effectuée"
+      "patch": "4.10.3",
+      "records": 39,
+      "site_pairs": 222,
+      "source_date": "2026-11-17",
+      "origin": "https://raw.githubusercontent.com/SeekND/Strata/main/data/mining_data.json",
+      "sha256": "ee887179b38e3664e7ab237782d34fee9960cd048ea651e3968615e65f52bcca",
+      "last_attempt": "2026-11-25T21:48:25Z",
+      "last_attempt_ok": true,
+      "last_success": "2026-11-25T21:48:25Z",
+      "review_required": false,
+      "error": null
     },
     "forge": {
-      "last_attempt_ok": false,
-      "last_success": null,
-      "patch": null,
-      "error": "Première synchronisation non effectuée"
+      "patch": "4.10.3",
+      "records": 1633,
+      "recipes": 1633,
+      "source_date": "2026-11-17",
+      "origin": "https://raw.githubusercontent.com/SeekND/Forge/main/data/crafting_data.json",
+      "sha256": "baa80bb509ca1dafa85bf5ad22b0372b32cfd36197fc7095bfe0d54a3ec1a625",
+      "last_attempt": "2026-11-25T21:48:26Z",
+      "last_attempt_ok": true,
+      "last_success": "2026-11-25T21:48:26Z",
+      "review_required": false,
+      "error": null
+    },
+    "uex": {
+      "origin": "https://api.uexcorp.uk/2.0/",
+      "last_attempt": "2026-11-25T21:48:26Z",
+      "last_success": "2026-11-25T21:48:26Z",
+      "last_attempt_ok": true,
+      "records": 51,
+      "partial": false,
+      "warnings": [],
+      "scope": "Prix publics UEX. Nombre SCU: demande estimée et maximum historique; pas de stock LIVE garanti."
     }
   },
-  "notes": "Salvage manuel; méthodes de raffinage estimatives; démontage ne garantit pas de rendement réel."
+  "notes": "Salvage manuel (4.10.3), méthodes de raffinage estimatives, démontage non assimilable au rendement réel.",
+  "patch_mismatch": false
 }
