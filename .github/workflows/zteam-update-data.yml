@@ -1,0 +1,85 @@
+name: Z-Team - actualisation des donnees
+
+on:
+  workflow_dispatch:
+    inputs:
+      approve_major:
+        description: 'Valider manuellement des changements importants apres audit'
+        required: false
+        type: boolean
+        default: false
+  schedule:
+    # Deux controles par jour en UTC.
+    - cron: '17 5,17 * * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: zteam-data-updates
+  cancel-in-progress: false
+
+jobs:
+  update-data:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Recuperer le depot
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - name: Installer Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Tester les validateurs et l'integrite du site
+        run: |
+          python scripts/test_refresh.py
+          python scripts/test_quality.py
+          python scripts/verify_site.py
+
+      - name: Synchroniser Strata (Mining) et Forge (Crafting)
+        shell: bash
+        run: |
+          if [ "${{ inputs.approve_major }}" = "true" ]; then
+            python scripts/refresh_sources.py --site site --approve-major
+          else
+            python scripts/refresh_sources.py --site site
+          fi
+
+      - name: Verifier le module UEX (prix et SCU)
+        run: python scripts/test_uex_sales.py
+
+      - name: Synchroniser UEX (Revente)
+        env:
+          UEX_TOKEN: ${{ secrets.UEX_TOKEN }}
+        run: python scripts/refresh_uex_sales.py --site site
+
+      - name: Sauvegarder les donnees validees dans main
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add site/data/
+          if git diff --cached --quiet; then
+            echo 'Aucune nouvelle donnee validee a publier.'
+          else
+            git commit -m 'chore: mise a jour automatique des donnees Z-Team'
+            git push origin HEAD:main
+          fi
+
+      - name: Resume des resultats
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '## Z-Team - Etat des donnees'
+            echo ''
+            echo 'Fichiers disponibles apres le controle :'
+            echo '```'
+            ls -lh site/data/*.json 2>/dev/null || true
+            echo '```'
+            echo ''
+            echo 'Details : inspecter site/data/update_status.json et site/data/update_review.json.'
+          } >> "$GITHUB_STEP_SUMMARY"
