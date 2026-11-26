@@ -1,31 +1,45 @@
 {
-  "checked_at": "2026-11-25T21:48:25Z",
+  "checked_at": "2026-11-26T06:06:28Z",
   "sources": {
     "strata": {
       "source": "strata",
-      "old_patch": null,
+      "old_patch": "4.10.3",
       "new_patch": "4.10.3",
-      "old_records": 0,
-      "new_records": 39,
-      "added": 39,
+      "old_records": 144,
+      "new_records": 144,
+      "added": 0,
       "removed": 0,
       "modified": 0,
+      "mission_sources_modified": null,
+      "examples": {
+        "added": [],
+        "removed": [],
+        "modified": []
+      },
       "review_required": false,
+      "hard_stop": false,
       "reasons": [],
-      "comparison": "Premier référentiel validé : pas d’historique à comparer."
+      "comparison": "Comparaison automatique : vérifie les écarts, pas les données du jeu."
     },
     "forge": {
       "source": "forge",
-      "old_patch": null,
+      "old_patch": "4.10.3",
       "new_patch": "4.10.3",
-      "old_records": 0,
-      "new_records": 1633,
-      "added": 1633,
+      "old_records": 1624,
+      "new_records": 1624,
+      "added": 0,
       "removed": 0,
       "modified": 0,
+      "mission_sources_modified": 0,
+      "examples": {
+        "added": [],
+        "removed": [],
+        "modified": []
+      },
       "review_required": false,
+      "hard_stop": false,
       "reasons": [],
-      "comparison": "Premier référentiel validé : pas d’historique à comparer."
+      "comparison": "Comparaison automatique : vérifie les écarts, pas les données du jeu."
     }
   }
 }
