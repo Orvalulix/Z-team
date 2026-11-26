@@ -1,4 +1,4 @@
-/* Z-Team Operations Web — bootstrap, no .cmd required. */
+/* Z-Team Craft Center — bootstrap, no .cmd required. */
 (function(){
   'use strict';
   const ROOT='./';
@@ -53,7 +53,17 @@
         else{window.ZTEAM_MINING_DATA=null;window.ZTEAM_SOURCE_RUNTIME.mining='historique';}
       }
     })();
-    await Promise.all([statusTask,miningTask]);
+    // First paint is never blocked by a ten-second data timeout.
+    // A slow network switches to the validated browser cache or historical mode.
+    const tasks=Promise.all([statusTask,miningTask]);
+    let slow=false;
+    await Promise.race([tasks,new Promise(resolve=>setTimeout(()=>{slow=true;resolve();},3000))]);
+    if(slow){
+      window.ZTEAM_SOURCE_RUNTIME.delayed=true;
+      tasks.then(()=>{window.ZTEAM_SOURCE_RUNTIME.lateUpdate=true;
+        window.dispatchEvent(new Event('zteam-late-data'));
+      }).catch(()=>{});
+    }
     const script=document.createElement('script');script.src=ROOT+'app.js';script.defer=true;
     script.onerror=()=>{const m=document.createElement('p');m.textContent="Impossible de charger l'application. Vérifiez les fichiers du site.";document.body.prepend(m);};
     document.body.appendChild(script);

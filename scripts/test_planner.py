@@ -18,7 +18,7 @@ STRATA={"meta":{"current_patch":"4.10.3"},"location_ores":{
 
 def run():
   with sync_playwright() as p:
-    browser=p.chromium.launch(headless=True,executable_path='/usr/bin/chromium',args=['--no-sandbox'])
+    browser=p.chromium.launch(headless=True,executable_path=('/usr/bin/chromium' if Path('/usr/bin/chromium').exists() else None),args=['--no-sandbox'])
     for width in (1440,390):
       page=browser.new_page(viewport={'width':width,'height':900})
       errors=[];page.on('pageerror',lambda e: errors.append(str(e)))
@@ -58,7 +58,12 @@ def run():
       page.once('dialog',lambda d:d.accept('Deuxième projet'))
       page.locator('#ztProjectNew').click()
       assert 'Deuxième projet' in page.locator('#ztProjectSelect').inner_text()
+      # Global mode keeps demand from the first project while the new one is empty.
+      assert page.locator('.zt-proc-item').count()>0
+      page.locator('#ztCraftScope').select_option('active')
       assert 'Ajoute au moins' in page.locator('#ztProcList').inner_text()
+      page.locator('#ztCraftScope').select_option('all')
+      assert page.locator('.zt-proc-item').count()>0
       page.locator('#ztProjectSelect').select_option('principal')
       assert page.locator('#ztProcList .zt-proc-item').count()>0
       assert not errors, errors

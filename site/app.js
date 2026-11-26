@@ -71,8 +71,19 @@ const ORES=[{"id":"quantainium","name":"Quantainium","alias":"Quantainium","rs":
     return n>0 && n<=100000000 ? n : NaN;
   }
   const sysLabel = ids => ids.map(id=>SYSTEMS[id]).join(' · ');
-  function chooseView(name) {
-    if(!['prospect','scanner','catalogue','calcul','chrono','salvage','collecte','crafting','dismantle','revente'].includes(name)) return;
+  let restoringNavigation=false;
+  let currentView='prospect';
+  const allViews=['prospect','scanner','catalogue','calcul','chrono','salvage','collecte','crafting','dismantle','revente'];
+  function commitNavigation(){
+    if(restoringNavigation)return;
+    const u=new URL(location.href);
+    if(currentDivision){u.searchParams.set('division',currentDivision);u.searchParams.set('view',currentView);}
+    else{u.searchParams.delete('division');u.searchParams.delete('view');}
+    window.history.pushState({division:currentDivision,view:currentView},'',u);
+  }
+  function chooseView(name,track=true) {
+    if(!allViews.includes(name)) return;
+    currentView=name;
     $$('.view').forEach(el=>el.classList.toggle('active',el.id==='view-'+name));
     $$('.nav-btn').forEach(btn=>{
       const yes=btn.dataset.view===name;
@@ -89,8 +100,9 @@ const ORES=[{"id":"quantainium","name":"Quantainium","alias":"Quantainium","rs":
     if(name==='revente') renderSales();
     if(name==='chrono') updateClock();
     window.scrollTo({top:0,behavior:'instant'});
+    if(track)commitNavigation();
   }
-  function enterDivision(division){
+  function enterDivision(division,viewName=null){
     if(!['mining','salvage','crafting','dismantle'].includes(division))return;
     currentDivision=division;
     document.body.classList.remove('home-mode');
@@ -99,15 +111,24 @@ const ORES=[{"id":"quantainium","name":"Quantainium","alias":"Quantainium","rs":
     $('navSalvage').classList.toggle('is-hidden',division!=='salvage');
     $('navCrafting').classList.toggle('is-hidden',division!=='crafting');
     $('navDismantle').classList.toggle('is-hidden',division!=='dismantle');
-    $('divisionName').textContent=mining?'Mining Division':division==='salvage'?'Salvage Division':division==='crafting'?'Crafting Division':'Démontage Division';
+    $('divisionName').textContent=mining?'Mining':division==='salvage'?'Salvage':division==='crafting'?'Craft Center':'Démontage';
     $('switchDivision').textContent='↔ Divisions';
-    chooseView(mining?'prospect':division==='salvage'?'salvage':division==='crafting'?'crafting':'dismantle');
+    chooseView(allViews.includes(viewName)?viewName:(mining?'prospect':division==='salvage'?'salvage':division==='crafting'?'crafting':'dismantle'),false);
+    commitNavigation();
   }
-  function goHome(){currentDivision=null;document.body.classList.add('home-mode');window.scrollTo({top:0,behavior:'instant'});}
+  function goHome(){currentDivision=null;document.body.classList.add('home-mode');window.scrollTo({top:0,behavior:'instant'});commitNavigation();}
   $('homeLogo').src=document.querySelector('.brand-logo').src;
   $$('[data-enter-division]').forEach(b=>b.addEventListener('click',()=>enterDivision(b.dataset.enterDivision)));
   $('goHome').addEventListener('click',goHome);
   $('switchDivision').addEventListener('click',goHome);
+  window.history.replaceState({division:null,view:null},'',location.href);
+  window.addEventListener('popstate',()=>{
+    restoringNavigation=true;
+    try {const q=new URLSearchParams(location.search),division=q.get('division'),view=q.get('view');
+      if(['mining','salvage','crafting','dismantle'].includes(division))enterDivision(division,view);
+      else goHome();
+    }finally{restoringNavigation=false;}
+  });
   $$('.nav-btn').forEach(btn=>btn.addEventListener('click',()=>chooseView(btn.dataset.view)));
   $('salvageToList').addEventListener('click',()=>chooseView('collecte'));
   const savedShip=safeLocal.get('salvageShip','vulture');
@@ -146,7 +167,7 @@ const ORES=[{"id":"quantainium","name":"Quantainium","alias":"Quantainium","rs":
   // Offline intelligence from SCMINER. System-specific locations are never mixed.
   if(INTEL.savrilium?.locations?.N) INTEL.savrilium.locations.N=INTEL.savrilium.locations.N.filter(z=>z.name!=='Breaker Stations — grandes géodes');
   
-  // V15.1 — Source locale Strata, récupérée par le lanceur et validée avant installation.
+  // Source Strata validée et publiée automatiquement par le serveur.
   // L'ancien référentiel est conservé pour navigation hors ligne, MAIS ses indices ne sont pas présentés comme vérifiés.
   const STRATA_CURRENT = window.ZTEAM_MINING_DATA || null;
   const STRATA_VERIFIED = !!(
@@ -537,6 +558,53 @@ const ORES=[{"id":"quantainium","name":"Quantainium","alias":"Quantainium","rs":
   const craftKinds={armor_pieces:'Armures',weapons:'Armes FPS',ship_weapons:'Armes de vaisseau',ship_components:'Composants de vaisseau',backpacks:'Sacs à dos',undersuits:'Sous-combinaisons',undersuit_helmets:'Casques',flightsuits:'Combinaisons',flightsuit_helmets:'Casques de vol',armor_sets:'Ensembles'};
   const oreLexicon=new Set(ORES.flatMap(o=>[o.name,o.alias].filter(Boolean).map(x=>x.trim().toLowerCase())));
   const salvageLexicon=new Set(['rmc','recycled material composite','construction materials','construction material','cm','rubble','pieces','salvage']);
+  // Démontage : la recette Forge n'est PAS la sortie réelle de l'Item Fabricator.
+  // CIG (notes 4.7) : seulement une partie des ressources est restituée, qualité d'origine
+  // pour les objets fabriqués ; les objets obtenus en jeu utilisent une qualité par défaut.
+  // Rendement ~50 % et huit exclusions : retours communautaires/PIPELINE de mai 2026,
+  // NON confirmés par une table officielle exhaustive en patch 4.10.3.
+  const DISM_POLICY={patch:'4.10.3',estimatedYield:.5,
+    excluded:['Quantainium','Stileron','Savrilium','Lindinium','Riccite','Ouratite','Saldynium','Janalite'],
+    // Signalements contradictoires / pas de table de retour vérifiée : pas de chiffrage.
+    uncertain:['Sadaryx'],
+    sources:{official:'https://robertsspaceindustries.com/comm-link/Patch-Notes/21070-Star-Citizen-Alpha-47',
+      community:'https://www.reddit.com/r/LowSodiumStarCitizen/comments/1tjtork/mission_ship_cargo_dismantling_changes_pipeline/',
+      independent:'https://starcitizen.tools/Item_fabricator'}
+  };
+  const dismNorm=v=>{const name=String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s*\((?:ore|raw)\)\s*$/i,'').trim().toLowerCase();return name==='quantanium'?'quantainium':name==='jalanite'?'janalite':name;};
+  const dismExcluded=new Set(DISM_POLICY.excluded.map(dismNorm));
+  const dismUncertain=new Set(DISM_POLICY.uncertain.map(dismNorm));
+  function dismIsExcluded(name){return dismExcluded.has(dismNorm(name));}
+  function dismPatchMatches(){const patch=$('craftPatchLabel')?.textContent||'';return patch===DISM_POLICY.patch;}
+  function dismEval(r,number=1){
+    if(dismIsExcluded(r.name))return {kind:'excluded',amount:null,note:'Exclu des retours selon signalements communautaires (aucun gain à prévoir).'};
+    if(r.unit!=='cSCU'||r.catalyst)return {kind:'unknown',amount:null,note:'Retour non documenté : unité/catalyseur non convertible en cSCU.'};
+    if(dismUncertain.has(dismNorm(r.name)))return {kind:'unknown',amount:null,note:'Ressource à retour incertain : estimation volontairement désactivée.'};
+    if(!dismPatchMatches())return {kind:'unknown',amount:null,note:'Patch Forge différent des règles communautaires 4.10.3 : contrôle en jeu obligatoire.'};
+    return {kind:'estimate',amount:r.qty*number*DISM_POLICY.estimatedYield,
+      note:'Estimation communautaire à 50 % du volume de recette — PAS une quantité garantie.'};
+  }
+  const dismKinds=new Set(['armor_pieces','weapons','backpacks','undersuits','flightsuits','undersuit_helmets','flightsuit_helmets','ship_weapons','ship_components']);
+  function dismEligibleCatalogEntry(b){return dismKinds.has(b.kind)&&b.recipe.length>0;}
+  const fmtDism=n=>fmt(n,{maximumFractionDigits:6});
+  let dismCount=1;
+  let dismObservations=safeLocal.get('dismantleObservationsV161',[]);
+  if(!Array.isArray(dismObservations))dismObservations=[];
+  dismObservations=dismObservations.filter(x=>x&&typeof x.blueprintId==='string'&&typeof x.material==='string'&&typeof x.patch==='string'&&Number.isFinite(x.qty)&&x.qty>=0&&Number.isInteger(x.items)&&x.items>0).slice(-300);
+  function saveDismObservations(){safeLocal.set('dismantleObservationsV161',dismObservations);}
+
+  let craftScope=safeLocal.get('craftScopeV16','all')==='active'?'active':'all';
+  function scopedCraftItems(){return craftScope==='all'?craftProjects.flatMap(p=>p.items):craftPlan;}
+  function scopedHasPlan(){return scopedCraftItems().length>0;}
+  function syncCraftScope(){
+    for(const id of ['ztCraftScope','ztCollectScope'])if($(id))$(id).value=craftScope;
+    if($('ztProcScopeNote'))$('ztProcScopeNote').textContent=craftScope==='all'?'Tous les projets · stock unique':'Projet actif seulement';
+  }
+  for(const id of ['ztCraftScope','ztCollectScope'])$(id)?.addEventListener('change',e=>{
+    craftScope=e.target.value==='active'?'active':'all';safeLocal.set('craftScopeV16',craftScope);
+    syncCraftScope();renderCraftNeeds();
+  });
+  syncCraftScope();
   const fmtCraft=n=>fmt(n,{maximumFractionDigits:3});
   const numCraft=(v)=>{const n=Number(v);return Number.isFinite(n)&&n>=0&&n<=1e9?n:0;};
   function craftKind(name){return craftKinds[name]||name;}
@@ -546,7 +614,7 @@ const ORES=[{"id":"quantainium","name":"Quantainium","alias":"Quantainium","rs":
   // Priorité aux recettes les plus exigeantes, puis au lot de plus faible qualité admissible.
   function plannedRequirements(){
     const lines=[];
-    for(const p of craftPlan){const b=craftMap.get(p.id);if(!b)continue;
+    for(const p of scopedCraftItems()){const b=craftMap.get(p.id);if(!b)continue;
       for(const r of b.recipe){lines.push({key:craftMaterialKey(r.name,r.unit),name:r.name,unit:r.unit,qty:r.qty*p.qty,quality:r.quality||0});}
     }
     return lines;
@@ -557,16 +625,17 @@ const ORES=[{"id":"quantainium","name":"Quantainium","alias":"Quantainium","rs":
     const result=new Map();
     for(const [key,requirements] of grouped){
       const lots=craftLots.filter(x=>x.key===key).map(x=>({qty:x.qty,quality:x.quality})).sort((a,b)=>a.quality-b.quality);
-      let unknown=numCraft(craftStock[key]),done=0,missing=0,unverified=0,total=0;
+      let unknown=numCraft(craftStock[key]),done=0,missing=0,unverified=0,unverifiedEligible=0,total=0;
       const byQuality=new Map();
       for(const req of requirements){byQuality.set(req.quality,(byQuality.get(req.quality)||0)+req.qty);total+=req.qty;}
       for(const quality of [...byQuality.keys()].sort((a,b)=>b-a)){
         let remaining=byQuality.get(quality),provided=0;
         for(const lot of lots){if(remaining<=1e-8)break;if(lot.quality<quality)continue;const used=Math.min(remaining,lot.qty);lot.qty-=used;remaining-=used;provided+=used;}
         if(quality===0 && remaining>0){const used=Math.min(unknown,remaining);unknown-=used;remaining-=used;provided+=used;}
-        if(quality>0&&remaining>0&&unknown>0){unverified+=Math.min(remaining,unknown);}
+        if(quality>0&&remaining>0)unverifiedEligible+=remaining;
         done+=provided;missing+=remaining;
       }
+      unverified=Math.min(unknown,unverifiedEligible);
       result.set(key,{key,total,done,missing:Math.max(0,missing),unverified});
     }
     return result;
@@ -710,7 +779,8 @@ const ORES=[{"id":"quantainium","name":"Quantainium","alias":"Quantainium","rs":
     if(found)actions.push(`<button class="btn compact" type="button" data-open-ore="${escape(found.id)}">Minage : ${escape(found.name)}</button>`);
     else if(salvageLexicon.has(n))actions.push('<button class="btn compact" type="button" data-open-salvage="1">Salvage</button>');
     const related=craftReady && craftEntries.some(b=>['armor_pieces','weapons','backpacks','undersuits','flightsuits'].includes(b.kind) && b.recipe.some(r=>String(r.name).toLowerCase()===n));
-    if(related)actions.push(`<button class="btn compact ghost" type="button" data-open-dism-material="${escape(name)}">Recherche démontage</button>`);
+    if(related&&!dismIsExcluded(name))actions.push(`<button class="btn compact ghost" type="button" data-open-dism-material="${escape(name)}">Recherche démontage (est.)</button>`);
+    if(dismIsExcluded(name))actions.push('<span class="dism-alert-tag">Non prévu au démontage · source communautaire</span>');
     return actions.join('');
   }
   function craftQualityKey(id,idx){return id+'|'+idx;}
@@ -758,7 +828,7 @@ const ORES=[{"id":"quantainium","name":"Quantainium","alias":"Quantainium","rs":
   }
   function needTotals(){
     const totals=new Map();
-    for(const p of craftPlan){
+    for(const p of scopedCraftItems()){
       const b=craftMap.get(p.id);if(!b)continue;
       for(const r of b.recipe){
         const key=craftMaterialKey(r.name,r.unit),target=r.qty*p.qty;
@@ -777,7 +847,7 @@ const ORES=[{"id":"quantainium","name":"Quantainium","alias":"Quantainium","rs":
     }).join('')+`<p class="muted">Durée totale indicative : ${estimatedSeconds?craftTime(estimatedSeconds):'non renseignée'} (les opérations en parallèle ne sont pas déduites).</p>`:'<p class="muted">Aucune fabrication prévue. Choisis un blueprint et ajoute-le au plan.</p>';
   }
   function needHtml(items){
-    if(!craftPlan.length)return '<p class="muted">Aucun besoin calculé. Ajoute des blueprints dans la Crafting Division.</p>';
+    if(!scopedHasPlan())return '<p class="muted">Aucun besoin calculé. Ajoute des blueprints dans Craft Center.</p>';
     if(!craftReady)return '<p class="muted">Charge le catalogue pour recalculer les ingrédients. Le plan de fabrication est conservé sur cet appareil.</p>';
     const allocation=allocateCraftStock();
     return items.map(x=>{
@@ -790,13 +860,13 @@ const ORES=[{"id":"quantainium","name":"Quantainium","alias":"Quantainium","rs":
     }).join('')||'<p class="muted">Les blueprints sélectionnés n’ont aucune ressource chiffrée documentée.</p>';
   }
   function renderCraftNeeds(){
-    const needs=needTotals();$('craftTotal').textContent=`${needs.length} ressource${needs.length>1?'s':''}`;
+    const needs=needTotals();$('craftTotal').textContent=`${needs.length} ressource${needs.length>1?'s':''}`;syncCraftScope();
     const html=needHtml(needs);$('craftNeeds').innerHTML=html;$('craftNeedsShared').innerHTML=html;
     renderProcurement(needs);
   }
 
-  // V15.4 — one craft plan, three collection activities, and an explicit unverified queue.
-  const plannerKey=key=>`${activeProjectId}|${key}`;
+  // Planning multiple craft projects; no predicted dismantling yields.
+  const plannerKey=key=>`${craftScope==='all'?'TOUS':activeProjectId}|${key}`;
   const flatName=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toLowerCase();
   function renderProjectPicker(){
     const sel=$('ztProjectSelect');if(!sel)return;
@@ -816,7 +886,7 @@ const ORES=[{"id":"quantainium","name":"Quantainium","alias":"Quantainium","rs":
     activeProjectId=p.id;craftPlan=cleanPlan(p.items);renderCraftPlan();renderCraftNeeds();
   });
   $('ztProjectNew').addEventListener('click',()=>{
-    const name=prompt('Nom du nouveau projet (70 caractères maximum) :','Nouvelle opération');if(name===null)return;
+    const name=prompt('Nom du nouveau projet (70 caractères maximum) :','Nouveau projet de fabrication');if(name===null)return;
     if(!name.trim())return toast('Indique un nom de projet.');addProject(name.trim());
   });
   $('ztProjectRename').addEventListener('click',()=>{
@@ -850,6 +920,8 @@ const ORES=[{"id":"quantainium","name":"Quantainium","alias":"Quantainium","rs":
   }
   function methodForNeed(need){
     const override=procOverrides[plannerKey(need.key)];
+    // Ne jamais proposer le démontage comme méthode d'approvisionnement d'un minerai exclu.
+    if(override==='dismantle'&&dismIsExcluded(need.name))return inferredMethod(need);
     return ['mining','salvage','dismantle','unknown'].includes(override)?override:inferredMethod(need);
   }
   function destinationsFor(ore){
@@ -872,7 +944,10 @@ const ORES=[{"id":"quantainium","name":"Quantainium","alias":"Quantainium","rs":
   function dismantleCandidates(name){
     if(!craftReady)return [];
     const lower=flatName(name);
-    return craftEntries.filter(b=>['armor_pieces','weapons','backpacks','undersuits','flightsuits'].includes(b.kind)&&b.recipe.some(r=>flatName(r.name)===lower)).slice(0,3);
+    if(dismIsExcluded(name))return [];
+    return craftEntries.filter(b=>dismEligibleCatalogEntry(b)&&b.recipe.some(r=>flatName(r.name)===lower&&dismEval(r).kind==='estimate'))
+      .sort((a,b)=>b.recipe.filter(r=>flatName(r.name)===lower).reduce((v,r)=>v+(dismEval(r).amount||0),0)-a.recipe.filter(r=>flatName(r.name)===lower).reduce((v,r)=>v+(dismEval(r).amount||0),0))
+      .slice(0,3);
   }
   function procurementRows(needs=needTotals()){
     if(!craftReady)return [];
@@ -896,19 +971,19 @@ const ORES=[{"id":"quantainium","name":"Quantainium","alias":"Quantainium","rs":
       return places.length?`Sites : ${places.join(' ; ')}${refinery}`:`Aucun emplacement renseigné pour ${procSystem==='all'?'les systèmes connus':SYSTEMS[procSystem]}.`;
     }
     if(row.method==='salvage')return 'Matériau associé au Salvage. Source exacte et rendement à confirmer sur place ; capacités de vaisseaux consultables dans Salvage.';
-    if(row.method==='dismantle')return 'Piste de démontage non validée : la recette de fabrication ne prouve pas la quantité réellement récupérable.';
+    if(row.method==='dismantle')return 'Démontage non garanti : certaines ressources sont exclues selon des relevés communautaires ; pour les autres, 50 % est une simulation (pas un relevé du fabricant).';
     return 'Origine à déterminer : aucune méthode fiable identifiée à partir des sources publiées.';
   }
   function candidateInfo(row){
-    return row.candidates.length?`Objets possédant ce matériau dans leur <em>recette</em> (aucun rendement de démontage garanti) : ${row.candidates.map(c=>escape(c.name)).join(' · ')}`:'';
+    return row.candidates.length?`Candidats selon les recettes · estimation de retour par objet (50 % NON garanti) : ${row.candidates.map(c=>{const qty=c.recipe.filter(r=>flatName(r.name)===flatName(row.name)).reduce((a,r)=>a+(dismEval(r).amount||0),0);return escape(c.name)+' (≈ '+fmtDism(qty)+' cSCU)';}).join(' · ')}`:'';
   }
   function renderProcurement(needs=needTotals()){
     const panel=$('ztProcList');if(!panel)return;
     $('ztProcSystem').value=procSystem;
-    if(!craftPlan.length){$('ztProcSummary').innerHTML='';$('ztProcPrereq').innerHTML='';$('ztProcRoute').innerHTML='';panel.innerHTML='<p class="muted">Ajoute au moins un blueprint au plan pour calculer les sorties.</p>';return;}
+    if(!scopedHasPlan()){$('ztProcSummary').innerHTML='';$('ztProcPrereq').innerHTML='';$('ztProcRoute').innerHTML='';panel.innerHTML='<p class="muted">Ajoute au moins un blueprint au plan pour calculer les sorties.</p>';return;}
     if(!craftReady){$('ztProcSummary').innerHTML='';$('ztProcPrereq').innerHTML='';$('ztProcRoute').innerHTML='';panel.innerHTML='<p class="muted">Catalogue Forge non disponible : plan sauvegardé, calcul des courses impossible.</p>';return;}
     const rows=procurementRows(needs);
-    const missions=craftPlan.map(p=>({item:craftMap.get(p.id),quantity:p.qty,name:p.name||p.id})).filter(x=>x.item&&x.item.sources.length);
+    const missions=scopedCraftItems().map(p=>({item:craftMap.get(p.id),quantity:p.qty,name:p.name||p.id})).filter(x=>x.item&&x.item.sources.length);
     $('ztProcPrereq').innerHTML=missions.length?`<div class="zt-proc-recap"><strong>Blueprints et missions à vérifier</strong><ul>${missions.slice(0,12).map(x=>`<li>${escape(x.item.name)} — ${escape(x.item.sources.slice(0,2).map(craftSourceLabel).join(' / '))}</li>`).join('')}</ul><small>Présence dans le catalogue ≠ blueprint déjà débloqué sur ton compte.</small></div>`:'';
     // Coverage is an operational grouping only, not a geographic shortest-route claim.
     const overlaps=new Map();
@@ -919,7 +994,7 @@ const ORES=[{"id":"quantainium","name":"Quantainium","alias":"Quantainium","rs":
     const shared=[...overlaps.values()].filter(x=>x.ores.size>1).sort((a,b)=>b.ores.size-a.ores.size||a.name.localeCompare(b.name,'fr')).slice(0,4);
     $('ztProcRoute').innerHTML=shared.length?`<div class="zt-proc-recap zt-proc-route"><strong>Zones communes pour plusieurs minerais</strong><ul>${shared.map(z=>`<li>${escape(z.name)} (${escape(SYSTEMS[z.system])}) — ${z.ores.size} minerais : ${[...z.ores].map(escape).join(', ')}</li>`).join('')}</ul><small>Regroupement par présence documentée. Aucun temps de trajet ni rendement de sortie calculé.</small></div>`:'';
     const total=needs.length, covered=needs.length-rows.length;
-    $('ztProcSummary').innerHTML=`<div class="zt-proc-stat"><strong>${craftPlan.length}</strong><small>Blueprints distincts</small></div><div class="zt-proc-stat"><strong>${total}</strong><small>Matériaux distincts</small></div><div class="zt-proc-stat"><strong>${covered}</strong><small>Couverts par le stock</small></div><div class="zt-proc-stat"><strong>${rows.length}</strong><small>À récupérer / vérifier</small></div>`;
+    $('ztProcSummary').innerHTML=`<div class="zt-proc-stat"><strong>${scopedCraftItems().length}</strong><small>Lignes de fabrication</small></div><div class="zt-proc-stat"><strong>${total}</strong><small>Matériaux distincts</small></div><div class="zt-proc-stat"><strong>${covered}</strong><small>Couverts par le stock</small></div><div class="zt-proc-stat"><strong>${rows.length}</strong><small>À récupérer / vérifier</small></div>`;
     const groups=['mining','salvage','dismantle','unknown'];
     panel.innerHTML=rows.length?groups.map(group=>{
       const items=rows.filter(x=>x.method===group);
@@ -936,7 +1011,7 @@ const ORES=[{"id":"quantainium","name":"Quantainium","alias":"Quantainium","rs":
           <label>Récolté (suivi, hors stock)<input type="number" data-proc-tracked="${escape(r.key)}" min="0" max="100000000" step="any" value="${r.tracked}"/></label></div>
           <label class="field-label" style="margin:8px 0 4px;display:block">Méthode de collecte</label>
           <select aria-label="Méthode pour ${escape(r.name)}" data-proc-method="${escape(r.key)}">
-            ${groups.map(m=>`<option value="${m}" ${m===r.method?'selected':''}>${escape(methodLabels[m])}</option>`).join('')}
+            ${groups.filter(m=>!(m==='dismantle'&&dismIsExcluded(r.name))).map(m=>`<option value="${m}" ${m===r.method?'selected':''}>${escape(methodLabels[m])}</option>`).join('')}
           </select></div></div>`;
       }).join('');
       return `<section class="zt-proc-group"><h3>${escape(methodLabels[group])}<span class="zt-proc-count">${items.length} ressource(s)</span></h3>${entries}</section>`;
@@ -945,7 +1020,7 @@ const ORES=[{"id":"quantainium","name":"Quantainium","alias":"Quantainium","rs":
   $('ztProcSystem').addEventListener('change',e=>{procSystem=e.target.value;safeLocal.set('procureSystemV154',procSystem);renderProcurement();});
   $('ztProcList').addEventListener('change',e=>{
     const method=e.target.closest('[data-proc-method]');
-    if(method){procOverrides[plannerKey(method.dataset.procMethod)]=method.value;safeLocal.set('procureOverridesV154',procOverrides);renderProcurement();return;}
+    if(method){const key=method.dataset.procMethod;const row=procurementRows().find(r=>r.key===key);if(method.value==='dismantle'&&row&&dismIsExcluded(row.name)){toast('Ressource signalée comme exclue du démontage.');renderProcurement();return;}procOverrides[plannerKey(key)]=method.value;safeLocal.set('procureOverridesV154',procOverrides);renderProcurement();return;}
     const owner=e.target.closest('[data-proc-owner]'),tracked=e.target.closest('[data-proc-tracked]');
     const el=owner||tracked;if(!el)return;
     const key=plannerKey(owner?owner.dataset.procOwner:tracked.dataset.procTracked),old=procTracking[key]||{};
@@ -956,7 +1031,7 @@ const ORES=[{"id":"quantainium","name":"Quantainium","alias":"Quantainium","rs":
   function projectExportRows(){return procurementRows();}
   function projectDiscord(){
     const p=craftProjects.find(x=>x.id===activeProjectId),rows=projectExportRows();
-    const lines=[`Z-TEAM · OPÉRATION : ${p?.name||'Projet'}`,`Blueprints : ${craftPlan.map(x=>`${x.qty} × ${x.name||x.id}`).join(', ')}`,
+    const lines=[`Z-TEAM · CRAFT CENTER : ${craftScope==='all'?'Tous les projets':p?.name||'Projet'}`,`Blueprints : ${scopedCraftItems().map(x=>`${x.qty} × ${x.name||x.id}`).join(', ')}`,
       `Filtre de lieux : ${procSystem==='all'?'tous':SYSTEMS[procSystem]}`,`Sources : Forge + Strata ; rendement brut/démontage non estimé`];
     for(const method of ['mining','salvage','dismantle','unknown']){
       const items=rows.filter(x=>x.method===method);if(!items.length)continue;
@@ -969,12 +1044,12 @@ const ORES=[{"id":"quantainium","name":"Quantainium","alias":"Quantainium","rs":
     return lines.join('\n');
   }
   async function procCopy(text){try{await navigator.clipboard.writeText(text);toast('Copié dans le presse-papiers');}catch(e){fallbackCopy(text);}}
-  $('ztProcCopy').addEventListener('click',()=>{if(!craftPlan.length)return toast('Ajoute des blueprints au plan.');procCopy(projectDiscord());});
+  $('ztProcCopy').addEventListener('click',()=>{if(!scopedHasPlan())return toast('Ajoute des blueprints au plan.');procCopy(projectDiscord());});
   $('ztProcCSV').addEventListener('click',()=>{
-    if(!craftPlan.length)return toast('Ajoute des blueprints au plan.');
-    const rows=projectExportRows();exportCSV('Z-Team_Operation_Courses.csv',[
+    if(!scopedHasPlan())return toast('Ajoute des blueprints au plan.');
+    const rows=projectExportRows();exportCSV('Z-Team_Craft_Courses.csv',[
       ['Projet','Méthode','Ressource','Unité','Besoin total','Stock compatible','Reste','Qualité minimum','Destinations vérifiées ou indicatives','Responsable','Suivi récolté','Précaution'],
-      ...rows.map(x=>[craftProjects.find(p=>p.id===activeProjectId)?.name||'',methodLabels[x.method],x.name,x.unit,x.total,x.done,x.missing,x.quality,
+      ...rows.map(x=>[craftScope==='all'?'Tous les projets':craftProjects.find(p=>p.id===activeProjectId)?.name||'',methodLabels[x.method],x.name,x.unit,x.total,x.done,x.missing,x.quality,
         x.sites.map(z=>`${z.name} (${SYSTEMS[z.system]} : ${z.abundance}% relatif)`).join(' / '),x.owner,x.tracked,x.method==='dismantle'?'Rendement non vérifié':x.method==='unknown'?'Origine non identifiée':'Données communautaires'])]);
   });
   function sharePayload(){return {format:'ZTeamProject',version:1,name:craftProjects.find(p=>p.id===activeProjectId)?.name||'Projet',items:craftPlan.map(p=>({id:p.id,qty:p.qty,name:p.name||''}))};}
@@ -995,10 +1070,13 @@ const ORES=[{"id":"quantainium","name":"Quantainium","alias":"Quantainium","rs":
   $('ztProjectAcceptShared').addEventListener('click',()=>{
     if(!pendingShared)return;addProject(pendingShared.name,pendingShared.items);
     pendingShared=null;$('ztSharedProjectBanner').classList.add('is-hidden');
-    if(history.replaceState)history.replaceState(null,'',location.href.split('#')[0]);
+    if(window.history.replaceState)window.history.replaceState(null,'',location.href.split('#')[0]);
+  });
+  $('ztBrowseCraft')?.addEventListener('click',()=>{
+    enterDivision('crafting');loadCraftCatalog();$('craftQuery')?.focus();
   });
   $('ztStartPlanner').addEventListener('click',()=>{
-    enterDivision('crafting');$('ztProjectsPanel').scrollIntoView({behavior:'smooth',block:'start'});
+    enterDivision('crafting');loadCraftCatalog();$('ztProjectsPanel').scrollIntoView({behavior:'smooth',block:'start'});
   });
   $('ztGoPlanner').addEventListener('click',()=>{
     $('ztProcurementPanel').scrollIntoView({behavior:'smooth',block:'start'});
@@ -1007,28 +1085,70 @@ const ORES=[{"id":"quantainium","name":"Quantainium","alias":"Quantainium","rs":
 
   function dismMatches(){
     const q=$('dismQuery').value.trim().toLocaleLowerCase('fr'),mat=$('dismMaterial').value;
-    return craftEntries.filter(b=>['armor_pieces','weapons','backpacks','undersuits','flightsuits'].includes(b.kind)&&b.recipe.length&&(!q||[b.name,b.category,...b.recipe.map(r=>r.name)].some(t=>t.toLocaleLowerCase('fr').includes(q)))&&(mat==='all'||b.recipe.some(r=>r.name===mat))).sort((a,b)=>mat!=='all'?(b.recipe.filter(r=>r.name===mat).reduce((t,r)=>t+r.qty,0)-a.recipe.filter(r=>r.name===mat).reduce((t,r)=>t+r.qty,0))||a.name.localeCompare(b.name,'fr'):a.name.localeCompare(b.name,'fr'));
+    return craftEntries.filter(b=>dismEligibleCatalogEntry(b)&&(!q||[b.name,b.category,...b.recipe.map(r=>r.name)].some(t=>t.toLocaleLowerCase('fr').includes(q)))&&
+      (mat==='all'||b.recipe.some(r=>r.name===mat)))
+      .sort((a,b)=>mat!=='all'&& !dismIsExcluded(mat)?
+        (b.recipe.filter(r=>r.name===mat).reduce((t,r)=>t+(dismEval(r).amount||0),0)-a.recipe.filter(r=>r.name===mat).reduce((t,r)=>t+(dismEval(r).amount||0),0))||a.name.localeCompare(b.name,'fr'):
+        a.name.localeCompare(b.name,'fr'));
   }
   function renderDismantle(){
     if(!craftReady){$('dismList').innerHTML='<p class="muted">Chargement du catalogue…</p>';return;}
-    const mats=[...new Set(craftEntries.filter(b=>['armor_pieces','weapons','backpacks','undersuits','flightsuits'].includes(b.kind)).flatMap(b=>b.recipe.map(r=>r.name)))].sort((a,b)=>a.localeCompare(b,'fr'));
+    const mats=[...new Set(craftEntries.filter(dismEligibleCatalogEntry).flatMap(b=>b.recipe.map(r=>r.name)))].sort((a,b)=>a.localeCompare(b,'fr'));
     const old=$('dismMaterial').value;
-    if($('dismMaterial').options.length<2){$('dismMaterial').innerHTML='<option value="all">Tous les matériaux</option>'+mats.map(m=>`<option value="${escape(m)}">${escape(m)}</option>`).join('');if(mats.includes(old))$('dismMaterial').value=old;}
-    const arr=dismMatches();$('dismResultCount').textContent=`${fmt(arr.length)} objet${arr.length>1?'s':''}`;
-    $('dismList').innerHTML=arr.slice(0,dismShown).map(b=>`<button class="craft-list-row ${dismSelected===b.id?'active':''}" type="button" data-dism-select="${escape(b.id)}"><span><strong>${escape(b.name)}</strong><small>${escape(b.category)}${$('dismMaterial').value!=='all'?' · Recette : '+fmtCraft(b.recipe.filter(r=>r.name===$('dismMaterial').value).reduce((t,r)=>t+r.qty,0))+' cSCU':''}</small></span></button>`).join('')||'<p class="muted">Aucun objet trouvé.</p>';
+    if($('dismMaterial').options.length<2){$('dismMaterial').innerHTML='<option value="all">Tous les matériaux</option>'+mats.map(m=>`<option value="${escape(m)}">${escape(m)}${dismIsExcluded(m)?' · exclu selon communauté':dismUncertain.has(dismNorm(m))?' · incertain':''}</option>`).join('');if(mats.includes(old))$('dismMaterial').value=old;}
+    const selected=$('dismMaterial').value;
+    if($('dismPolicyNote'))$('dismPolicyNote').innerHTML=`<strong>Audit patch ${escape(DISM_POLICY.patch)} :</strong> rendement communautaire ≈ 50 % pour les matériaux éligibles ; <strong>${DISM_POLICY.excluded.length} matériaux signalés comme exclus</strong>. ${dismPatchMatches()?'Forge correspond au patch examiné.':'⚠ Patch Forge différent : estimations chiffrées suspendues.'} Ni le taux ni les exclusions ne constituent une garantie officielle. <a href="${DISM_POLICY.sources.official}" target="_blank" rel="noopener noreferrer">CIG</a> · <a href="${DISM_POLICY.sources.community}" target="_blank" rel="noopener noreferrer">Signalements</a>.`;
+    if($('dismMaterialWarning'))$('dismMaterialWarning').innerHTML=dismIsExcluded(selected)?`<strong>${escape(selected)} : non récupérable selon les informations communautaires.</strong> Les objets ci-dessous peuvent contenir ce matériau dans leur recette, mais il ne faut <strong>rien prévoir</strong> au démontage.`:dismUncertain.has(dismNorm(selected))?`<strong>${escape(selected)} : récupération incertaine.</strong> Aucun gain calculé tant que le retour n'est pas confirmé.`:'';
+    $('dismMaterialWarning').classList.toggle('is-hidden',!dismIsExcluded(selected)&&!dismUncertain.has(dismNorm(selected)));
+    if($('dismCount'))$('dismCount').value=String(dismCount);
+    const arr=dismMatches();$('dismResultCount').textContent=`${fmt(arr.length)} objet${arr.length>1?'s':''} (recettes, pas retours garantis)`;
+    $('dismList').innerHTML=arr.slice(0,dismShown).map(b=>`<button class="craft-list-row ${dismSelected===b.id?'active':''}" type="button" data-dism-select="${escape(b.id)}"><span><strong>${escape(b.name)}</strong><small>${escape(b.category)}${selected!=='all'?' · '+(dismIsExcluded(selected)?'Ressource exclue':`Retour indicatif : ${b.recipe.some(r=>r.name===selected&&dismEval(r).kind==='estimate')?'≈ '+fmtDism(b.recipe.filter(r=>r.name===selected).reduce((t,r)=>t+(dismEval(r).amount||0),0))+' cSCU / objet':'non chiffrable'}`):''}</small></span></button>`).join('')||'<p class="muted">Aucun objet trouvé pour cette recherche.</p>';
     $('dismMore').classList.toggle('is-hidden',arr.length<=dismShown);
     const b=craftMap.get(dismSelected);
-    if(!b){$('dismDetail').innerHTML='<p class="muted">Sélectionne un objet à démonter.</p>';return;}
-    $('dismDetail').innerHTML=`<h3>${escape(b.name)}</h3><p class="muted">${escape(b.category)}</p><h4 class="craft-detail-title">Matériaux de la recette</h4>
-      <ul class="dism-materials">${b.recipe.map(r=>`<li><div><strong>${escape(r.name)}</strong>${r.slot?`<small class="muted"> · ${escape(r.slot)}</small>`:''}</div><span class="qty">Recette : ${fmtCraft(r.qty)} ${escape(r.unit)}</span></li>`).join('')}</ul>
-      <div class="dism-tip">Les quantités indiquées correspondent à la <strong>recette de fabrication</strong>, pas aux matériaux garantis au démontage. Certaines ressources peuvent ne pas être récupérables ; le terminal du jeu fait foi. Pour un objet acheté ou trouvé : qualité Q500 par défaut. Pour un objet fabriqué : qualité d’origine, avec perte de quantité.</div>
-      <div class="craft-link-actions"><button class="btn compact" type="button" data-dism-go-blueprint="${escape(b.id)}">Ouvrir le blueprint complet</button></div>`;
+    if(!b){$('dismDetail').innerHTML='<p class="muted">Sélectionne un objet à démonter pour distinguer la recette, les pertes et les matériaux à retour incertain.</p>';return;}
+    const rows=b.recipe.map(r=>{const v=dismEval(r,dismCount);
+      const state=v.kind==='excluded'?'dism-status-excluded':v.kind==='unknown'?'dism-status-unknown':'dism-status-estimate';
+      const result=v.kind==='excluded'?'0 prévu · exclusion communautaire':v.kind==='unknown'?'Quantité inconnue':`≈ ${fmtDism(v.amount)} cSCU · non garanti`;
+      const amount=r.qty*dismCount;
+      return `<li class="dism-result-row"><div class="dism-resource"><strong>${escape(r.name)}</strong><small>Fabrication : ${fmtCraft(amount)} ${escape(r.unit)} pour ${dismCount} objet${dismCount>1?'s':''}${r.slot?' · '+escape(r.slot):''}</small></div><div class="dism-result ${state}"><strong>${escape(result)}</strong><small>${escape(v.note)}</small></div></li>`;
+    }).join('');
+    const counts=b.recipe.reduce((x,r)=>{x[dismEval(r).kind]++;return x;},{excluded:0,unknown:0,estimate:0});
+    const safeMats=b.recipe.filter(r=>r.unit==='cSCU').map(r=>r.name);
+    const patch=String($('craftPatchLabel').textContent||'Inconnu');
+    const readings=dismObservations.map((o,i)=>({...o,index:i})).filter(x=>x.blueprintId===b.id).sort((a,b)=>b.index-a.index);
+    const observations=readings.length?`<div class="dism-observation-list">${readings.slice(0,12).map(o=>`<div class="dism-observation"><div><strong>${escape(o.material)}</strong> : ${fmtCraft(o.qty)} cSCU réellement notés après ${o.items} objet(s) (${fmtCraft(o.qty/o.items)} cSCU/objet) · ${escape(o.patch)}<small>Relevé personnel ${escape(o.at||'')} · non transférable à tous les objets</small></div><button class="btn compact ghost" type="button" data-dism-remove="${o.index}" aria-label="Supprimer ce relevé">Supprimer</button></div>`).join('')}</div>`:'<p class="muted">Aucun relevé personnel pour cet objet.</p>';
+    $('dismDetail').innerHTML=`<h3>${escape(b.name)}</h3><p class="muted">${escape(b.category)} · ${escape(patch)} · objet potentiellement démontable si le Fabricator l’accepte.</p>
+      <div class="dism-summary"><span><strong>${counts.estimate}</strong> ressource(s) estimables</span><span><strong>${counts.excluded}</strong> exclue(s)</span><span><strong>${counts.unknown}</strong> non chiffrable(s)</span></div>
+      <h4 class="craft-detail-title">Démontage : récupération prévisionnelle</h4>
+      <p class="muted dism-note">La recette Forge est une <strong>entrée de fabrication</strong>, pas une preuve de sortie. Pour ${dismCount} objet${dismCount>1?'s':''}, seuls les matériaux non exclus et exprimés en cSCU sont estimés (50 % communautaire). Aucun montant n’est ajouté au stock automatiquement.</p>
+      <ul class="dism-materials dism-results">${rows}</ul>
+      <div class="dism-tip"><strong>Qualité des matériaux :</strong> équipement acheté ou trouvé : valeur par défaut Q500 selon le guide ; objet fabriqué : qualité des matériaux utilisés à l'origine. Le jeu fait foi pour la sortie effective, la qualité et les arrondis. Les composants et objets ne sont pas tous nécessairement démontables.</div>
+      <div class="craft-link-actions"><button class="btn compact" type="button" data-dism-go-blueprint="${escape(b.id)}">Ouvrir le blueprint complet</button></div>
+      <div class="dism-record-panel"><h4 class="craft-detail-title">Mesurer un démontage réel</h4><p class="muted dism-note">Après avoir démonté l’objet en jeu, tu peux noter une quantité réellement reçue. Ces relevés restent sur ton appareil et ne modifient pas les règles générales ni le stock.</p>
+      <form id="dismRecordForm" class="dism-record-form"><label>Matériau observé<select name="material" required>${safeMats.map(x=>`<option value="${escape(x)}">${escape(x)}</option>`).join('')}</select></label>
+      <label>Objets démontés<input name="items" type="number" min="1" max="9999" value="1" step="1" required></label>
+      <label>Quantité reçue (cSCU)<input name="qty" type="number" min="0" max="1000000" step="0.001" placeholder="0 si aucun retour" required></label>
+      <button type="submit" class="btn primary">Enregistrer le relevé</button></form>
+      ${observations}</div>`;
   }
   $('dismQuery').addEventListener('input',()=>{dismShown=65;renderDismantle();});
   $('dismMaterial').addEventListener('change',()=>{dismShown=65;renderDismantle();});
+  $('dismCount')?.addEventListener('input',e=>{const n=Number(e.target.value);if(Number.isInteger(n)&&n>=1&&n<=9999&&n!==dismCount){dismCount=n;renderDismantle();}});
+  $('dismCount')?.addEventListener('change',e=>{const n=Number(e.target.value);if(!Number.isInteger(n)||n<1||n>9999){toast('Nombre d’objets entre 1 et 9999.');e.target.value=String(dismCount);}});
   $('dismMore').addEventListener('click',()=>{dismShown+=65;renderDismantle();});
   $('dismList').addEventListener('click',e=>{const el=e.target.closest('[data-dism-select]');if(!el)return;dismSelected=el.dataset.dismSelect;renderDismantle();});
-  $('dismDetail').addEventListener('click',e=>{const el=e.target.closest('[data-dism-go-blueprint]');if(!el)return;craftSelected=el.dataset.dismGoBlueprint;enterDivision('crafting');renderCrafting();});
+  $('dismDetail').addEventListener('submit',e=>{
+    if(e.target.id!=='dismRecordForm')return;e.preventDefault();const b=craftMap.get(dismSelected);if(!b)return;
+    const form=e.target,material=form.elements.material.value,qty=Number(form.elements.qty.value),items=Number(form.elements.items.value);
+    if(!b.recipe.some(r=>r.name===material&&r.unit==='cSCU')||!Number.isFinite(qty)||qty<0||qty>1e6||!Number.isInteger(items)||items<1||items>9999){toast('Relevé invalide.');return;}
+    const date=new Date().toISOString().slice(0,10);
+    dismObservations.push({blueprintId:b.id,material,qty,items,patch:String($('craftPatchLabel').textContent||'inconnu').slice(0,40),at:date});
+    dismObservations=dismObservations.slice(-300);saveDismObservations();renderDismantle();toast('Relevé enregistré sur cet appareil.');
+  });
+  $('dismDetail').addEventListener('click',e=>{
+    const del=e.target.closest('[data-dism-remove]');if(del){const i=Number(del.dataset.dismRemove);if(Number.isInteger(i)&&i>=0&&i<dismObservations.length){dismObservations.splice(i,1);saveDismObservations();renderDismantle();}return;}
+    const el=e.target.closest('[data-dism-go-blueprint]');if(!el)return;craftSelected=el.dataset.dismGoBlueprint;enterDivision('crafting');renderCrafting();
+  });
   $('craftQuery').addEventListener('input',()=>{craftShown=65;renderCrafting();});
   $('craftCategory').addEventListener('change',()=>{craftShown=65;renderCrafting();});
   $('craftMore').addEventListener('click',()=>{craftShown+=65;renderCrafting();});
@@ -1108,7 +1228,7 @@ const ORES=[{"id":"quantainium","name":"Quantainium","alias":"Quantainium","rs":
   });
   $('craftExport').addEventListener('click',()=>{
     const rows=[['Blueprint','Exemplaires','Ressource','Besoin','Unité','Stock compatible (total)','Reste global (par ressource)','Origine']];
-    const alloc=allocateCraftStock();for(const p of craftPlan){const b=craftMap.get(p.id);if(!b)continue;for(const r of b.recipe){const key=craftMaterialKey(r.name,r.unit),a=alloc.get(key);rows.push([b.name,p.qty,r.name,r.qty*p.qty,r.unit,a?.done??0,a?.missing??r.qty*p.qty,craftMaterialClass(r.name)]);}}
+    const alloc=allocateCraftStock();for(const p of scopedCraftItems()){const b=craftMap.get(p.id);if(!b)continue;for(const r of b.recipe){const key=craftMaterialKey(r.name,r.unit),a=alloc.get(key);rows.push([b.name,p.qty,r.name,r.qty*p.qty,r.unit,a?.done??0,a?.missing??r.qty*p.qty,craftMaterialClass(r.name)]);}}
     if(rows.length===1){toast('Ajoute des blueprints avant l’export.');return;}
     rows.push([]);rows.push(['TOTALS CONSOLIDÉS (par matériau)','','','','','','','']);
     for(const x of needTotals()){const a=alloc.get(x.key);rows.push(['TOTAL','',x.name,x.target,x.unit,a?.done||0,a?.missing??x.target,x.origin]);}
@@ -1124,7 +1244,7 @@ const ORES=[{"id":"quantainium","name":"Quantainium","alias":"Quantainium","rs":
   $('startClock').addEventListener('click',()=>{timerStart=Date.now();safeLocal.set('timerStart',timerStart);updateClock();toast('Chrono local démarré — surveille aussi le HUD');});
   $('resetClock').addEventListener('click',()=>{timerStart=null;safeLocal.set('timerStart',null);updateClock();});
 
-  // V15.3 — Recherche transversale dans les données déjà disponibles.
+  // Recherche transversale dans les données déjà disponibles.
   // Les routes réutilisent les vrais écrans, elles ne créent aucun catalogue annexe.
   const quickSearch=$('ztGlobalSearch'),quickResults=$('ztGlobalSearchResults');
   let quickTargets=[];
@@ -1189,21 +1309,33 @@ const ORES=[{"id":"quantainium","name":"Quantainium","alias":"Quantainium","rs":
   }
 
   // Source: validated on the publishing server, never live calls or an API token in the browser.
-  let saleCatalogue=null, saleLoadPromise=null, saleLoadSettled=false;
+  let saleCatalogue=null, saleLoadPromise=null, saleLoadSettled=false, saleLoadError='';
   const saleIds={salvage:[['salvage:rmc','RMC (Recycled Material Composite)'],['salvage:cm','Construction Materials (CM)']]};
   const saleKind={refined:'ore:refined',raw:'ore:raw',salvage:'salvage'};
   const saleDate=stamp=>{if(!Number.isFinite(stamp))return 'Date inconnue';const d=new Date(stamp*1000);return isNaN(+d)?'Date inconnue':d.toLocaleString('fr-BE',{dateStyle:'short',timeStyle:'short'});};
   const saleCapacity=v=>Number.isFinite(v)?fmt(v,{maximumFractionDigits:2})+' SCU':'Non communiqué';
   const validSales=d=>d&&typeof d==='object'&&d.meta&&d.commodities&&typeof d.commodities==='object'&&Object.keys(d.commodities).length>0;
-  async function loadSaleData(){
+  async function loadSaleData(force=false){
     if(saleLoadPromise)return saleLoadPromise;
-    saleLoadPromise=(async()=>{try{
-      const res=await fetch('./data/uex_sales.json',{cache:'no-store'});if(!res.ok)throw Error('Cours non publiés');
-      const value=await res.json();if(!validSales(value))throw Error('Données UEX non disponibles');
-      saleCatalogue=value;
-    }catch(e){saleCatalogue=null;}saleLoadSettled=true;return saleCatalogue;})();
-    return saleLoadPromise;
+    if(force){saleCatalogue=null;saleLoadSettled=false;saleLoadError='';}
+    saleLoadPromise=(async()=>{
+      try{
+        const ctrl=new AbortController();const timer=setTimeout(()=>ctrl.abort(),12000);
+        let response;
+        try{response=await fetch('./data/uex_sales.json',{cache:'no-store',signal:ctrl.signal});}
+        finally{clearTimeout(timer);}
+        if(!response.ok)throw Error('HTTP '+response.status);
+        const data=await response.json();if(!validSales(data))throw Error('Catalogue UEX absent ou incomplet');
+        saleCatalogue=data;saleLoadError='';
+      }catch(e){saleLoadError='Cours indisponibles ('+(e?.name==='AbortError'?'délai réseau dépassé':'source non accessible')+').';saleCatalogue=null;}
+      finally{saleLoadSettled=true;}
+      return saleCatalogue;
+    })();
+    try{return await saleLoadPromise;}finally{saleLoadPromise=null;}
   }
+  const currentSalePatch=()=>String(window.ZTEAM_SYNC_STATUS?.sources?.strata?.patch||window.ZTEAM_MINING_DATA?.meta?.current_patch||'');
+  const saleAgeDays=p=>{const ts=Number(p.report_timestamp);return Number.isFinite(ts)&&ts>0?Math.max(0,(Date.now()/1000-ts)/86400):Infinity;};
+  const saleIsCurrent=p=>!currentSalePatch()||String(p.game_version||'')===currentSalePatch();
   function saleChoices(){
     const type=$('ztSaleType').value;
     const options=type==='salvage'?saleIds.salvage:ORES.map(o=>[type+':'+o.id,o.name]);
@@ -1219,52 +1351,93 @@ const ORES=[{"id":"quantainium","name":"Quantainium","alias":"Quantainium","rs":
     chooseView('revente');
   }
   function renderSales(){
-    const result=$('ztSaleResults'),status=$('ztSaleStatus'),summary=$('ztSaleSummary');
+    const result=$('ztSaleResults'),status=$('ztSaleStatus'),summary=$('ztSaleSummary'),compare=$('ztSaleCompare');
     if(!result)return;
     if(!saleCatalogue){
-      result.replaceChildren();summary.textContent='';
-      if(saleLoadPromise){if(saleLoadSettled)status.classList.add('warn');status.textContent=saleLoadSettled?'Aucun cours UEX valide publié ou accessible pour l’instant. Les prix et capacités ne sont pas inventés.':'Chargement du référentiel UEX publié…';return;}
+      result.replaceChildren();summary.textContent='';compare.textContent='';
+      if(saleLoadPromise){status.classList.remove('warn');status.textContent='Chargement du référentiel UEX publié…';return;}
+      if(saleLoadSettled){status.classList.add('warn');status.textContent=(saleLoadError||'Aucun cours UEX valide publié.')+' Clique sur « Actualiser les prix » pour réessayer.';return;}
       status.textContent='Recherche de la dernière copie UEX publiée…';
-      loadSaleData().then(()=>{if($('view-revente').classList.contains('active'))renderSales();});return;}
+      loadSaleData().then(()=>{if($('view-revente').classList.contains('active'))renderSales();});return;
+    }
     const key=$('ztSaleCommodity').value,record=saleCatalogue.commodities[key];
     const system=$('ztSaleSystem').value,amount=Math.min(100000,Math.max(.01,Number($('ztSaleAmount').value)||32));
-    const list=Array.isArray(record?.spots)?record.spots.filter(p=>!system||p.star_system_name===system):[];
+    const freshness=Number($('ztSaleFreshness').value)||0,strict=$('ztSaleSamePatch').checked;
+    const spots=Array.isArray(record?.spots)?record.spots.filter(p=>(!system||p.star_system_name===system)&&Number.isFinite(p.price_scu)&&p.price_scu>0):[];
+    const list=spots.filter(p=>(!freshness||saleAgeDays(p)<=freshness)&&(!strict||saleIsCurrent(p)));
     const order=$('ztSaleOrder').value;
-    const score=p=>order==='capacity'?(Number.isFinite(p.demand_scu_est)?p.demand_scu_est:-1):order==='value'?(Number.isFinite(p.demand_scu_est)?Math.min(amount,p.demand_scu_est)*p.price_scu:-1):p.price_scu;
-    list.sort((a,b)=>score(b)-score(a)||b.price_scu-a.price_scu);
+    const score=p=>order==='capacity'?(Number.isFinite(p.demand_scu_est)?p.demand_scu_est:-1):order==='value'?(Number.isFinite(p.demand_scu_est)?Math.min(amount,Math.max(0,p.demand_scu_est))*p.price_scu:-1):p.price_scu;
+    list.sort((a,b)=>score(b)-score(a)||b.price_scu-a.price_scu||saleAgeDays(a)-saleAgeDays(b));
     const fetched=Date.parse(saleCatalogue.meta.retrieved_at||'');
     status.classList.remove('warn');
-    status.textContent=`Source : UEX communautaire · dernière collecte ${Number.isFinite(fetched)?new Date(fetched).toLocaleString('fr-BE'):'inconnue'} · ${list.length} terminal(s) relevé(s).`;
-    summary.textContent=record?`Cours de ${record.commodity} — ${key.includes(':raw:')?'minerai brut':key.startsWith('salvage:')?'matériau de récupération':'minerai raffiné'}. Quantité envisagée : ${fmt(amount,{maximumFractionDigits:2})} SCU.`:'Aucun cours publié pour ce matériau et cette forme. Ne pas déduire qu’aucun terminal ne l’achète.';
-    if(!list.length){result.innerHTML='<div class="notice">Aucun terminal documenté pour cette sélection dans la copie publiée. Vérifiez la source UEX ou changez le filtre.</div>';return;}
-    result.innerHTML=list.slice(0,12).map(p=>{
-      const ts=Number(p.report_timestamp),age=Number.isFinite(ts)?(Date.now()/1000-ts)/86400:Infinity;
-      const old=age>7;
+    status.textContent=`UEX communautaire · récupération ${Number.isFinite(fetched)?new Date(fetched).toLocaleString('fr-BE'):'inconnue'} · ${list.length} terminal(s) selon les filtres · ${spots.length} relevé(s) au total${strict&&currentSalePatch()?' · patch '+currentSalePatch():''}.`;
+    summary.textContent=record?`Cours de ${record.commodity} — ${key.includes(':raw:')?'minerai brut':key.startsWith('salvage:')?'matériau de récupération':'minerai raffiné'}. Cargaison : ${fmt(amount,{maximumFractionDigits:2})} SCU.`:'Aucun cours publié pour ce matériau ou cette forme. Cela ne signifie pas qu’aucun terminal ne l’achète.';
+    // A gross-price comparison is not a refining profit calculation.
+    compare.innerHTML='';
+    if(key.startsWith('ore:')){
+      const id=key.split(':').slice(2).join(':'), getTop=kind=>{
+        const candidates=saleCatalogue.commodities['ore:'+kind+':'+id]?.spots||[];
+        return candidates.filter(p=>(!system||p.star_system_name===system)&&p.price_scu>0&&(!freshness||saleAgeDays(p)<=freshness)&&(!strict||saleIsCurrent(p))).sort((a,b)=>b.price_scu-a.price_scu)[0]||null;
+      };
+      const raw=getTop('raw'),refined=getTop('refined');
+      if(raw&&refined){
+        compare.innerHTML=`<div class="zt-compare-card"><strong>Brut vs raffiné · écart de prix, pas bénéfice net</strong><br>Meilleur cours brut : <strong>${fmt(raw.price_scu)} aUEC/SCU</strong> · Meilleur cours raffiné : <strong>${fmt(refined.price_scu)} aUEC/SCU</strong> · Écart de prix unitaire : <strong>${fmt(refined.price_scu-raw.price_scu)} aUEC/SCU</strong><br>Le rendement, les frais et la durée de raffinage ne sont pas déduits. Les quantités avant et après raffinage ne sont pas équivalentes.</div>`;
+      }
+    }
+    if(!list.length){
+      result.innerHTML=`<div class="notice">Aucun relevé répondant aux filtres. ${spots.length?'Des cours existent dans les archives, mais ils ne sont pas assez récents ou ne correspondent pas au patch.':'Aucun cours documenté pour la sélection.'} <button class="btn compact" type="button" data-sale-archives>Afficher les archives</button></div>`;
+      return;
+    }
+    result.innerHTML=list.slice(0,20).map(p=>{
+      const ts=Number(p.report_timestamp),age=saleAgeDays(p),old=age>7;
       const location=[p.star_system_name,p.planet_name,p.moon_name,p.space_station_name,p.outpost_name,p.city_name].filter(Boolean).filter((v,i,arr)=>arr.indexOf(v)===i).join(' · ')||'Système non communiqué';
       const forecast=Number.isFinite(p.demand_scu_est)?p.demand_scu_est:null;
       const max=Number.isFinite(p.max_scu_observed)?p.max_scu_observed:null;
-      const est=forecast===null?'Vente possible non quantifiable':`Jusqu’à ${fmt(Math.min(amount,forecast)*p.price_scu,{maximumFractionDigits:0})} aUEC estimés pour ${saleCapacity(Math.min(amount,forecast))}`;
-      return `<article class="zt-sale-spot"><div class="zt-sale-spot-top"><div><div class="zt-sale-spot-title">${escape(p.terminal)}</div><div class="zt-sale-location">${escape(location)}</div></div><div class="zt-sale-price">${fmt(p.price_scu,{maximumFractionDigits:2})}<small>aUEC / SCU · vente</small></div></div>
-      <div class="zt-sale-stats"><div class="zt-sale-stat"><span>Demande SCU estimée</span><strong>${saleCapacity(forecast)}</strong></div><div class="zt-sale-stat"><span>SCU MAX observé</span><strong>${saleCapacity(max)}</strong></div><div class="zt-sale-stat"><span>Stock terminal relevé</span><strong>${saleCapacity(p.inventory_scu_reported)}</strong></div><div class="zt-sale-stat"><span>Caisse MAX connue</span><strong>${saleCapacity(p.max_container_scu)}</strong></div></div>
-      <div class="zt-sale-foot"><span>${escape(est)}</span><span class="${old?'zt-sale-outdated':''}">Relevé : ${escape(saleDate(ts))}${old?' · ANCIEN':''} · patch ${escape(p.game_version||'non indiqué')}${Number.isFinite(p.quality)?' · Q'+fmt(p.quality):''}</span></div></article>`;
+      const est=forecast===null?'Capacité de vente non chiffrée':`Valeur estimée : ${fmt(Math.min(amount,Math.max(0,forecast))*p.price_scu,{maximumFractionDigits:0})} aUEC pour ${saleCapacity(Math.min(amount,Math.max(0,forecast)))}`;
+      return `<article class="zt-sale-spot"><div class="zt-sale-spot-top"><div><div class="zt-sale-spot-title">${escape(p.terminal)}</div><div class="zt-sale-location">${escape(location)}</div></div><div class="zt-sale-price">${fmt(p.price_scu,{maximumFractionDigits:2})}<small>aUEC / SCU · prix relevé</small></div></div>
+      <div class="zt-sale-stats"><div class="zt-sale-stat"><span>Demande estimée</span><strong>${saleCapacity(forecast)}</strong></div><div class="zt-sale-stat"><span>SCU MAX observé</span><strong>${saleCapacity(max)}</strong></div><div class="zt-sale-stat"><span>Stock terminal relevé</span><strong>${saleCapacity(p.inventory_scu_reported)}</strong></div><div class="zt-sale-stat"><span>Taille caisse MAX connue</span><strong>${saleCapacity(p.max_container_scu)}</strong></div></div>
+      <div class="zt-sale-foot"><span>${escape(est)}</span><span class="${old?'zt-sale-outdated':''}">Relevé : ${escape(saleDate(ts))}${old?' · HISTORIQUE':''} · patch ${escape(p.game_version||'non indiqué')}${Number.isFinite(p.quality)?' · Q'+fmt(p.quality):''}</span></div></article>`;
     }).join('');
   }
-  ['ztSaleCommodity','ztSaleSystem','ztSaleAmount','ztSaleOrder'].forEach(id=>$(id).addEventListener('input',renderSales));
+  ['ztSaleCommodity','ztSaleSystem','ztSaleAmount','ztSaleOrder','ztSaleFreshness','ztSaleSamePatch'].forEach(id=>$(id).addEventListener('input',renderSales));
   $('ztSaleType').addEventListener('change',()=>{saleChoices();renderSales();});
+  $('ztSaleRetry').addEventListener('click',async()=>{
+    $('ztSaleStatus').textContent='Nouvelle tentative de récupération des cours…';
+    await loadSaleData(true);renderSales();
+  });
+  $('ztSaleResults').addEventListener('click',e=>{
+    if(e.target.closest('[data-sale-archives]')){
+      $('ztSaleFreshness').value='0';$('ztSaleSamePatch').checked=false;renderSales();
+    }
+  });
   // Acces rapide aux marchandises de Salvage, quelle que soit la division active.
   $('ztSaleQuickCM').addEventListener('click',()=>openSales('salvage','salvage:cm'));
   $('ztSaleQuickRMC').addEventListener('click',()=>openSales('salvage','salvage:rmc'));
   $('ztSalvageSales').addEventListener('click',()=>openSales('salvage','salvage:rmc'));
   saleChoices();
+  window.addEventListener('zteam-late-data',()=>{
+    const panel=$('ztDataGrid');
+    if(panel){const note=document.createElement('div');note.className='notice';
+      note.innerHTML='De nouvelles données validées sont disponibles. <button class="btn compact" type="button">Recharger avec les données actuelles</button>';
+      note.querySelector('button').addEventListener('click',()=>location.reload());
+      panel.insertAdjacentElement('afterend',note);
+    }
+  });
   renderProspect();
+  const deepLink=new URLSearchParams(location.search);
+  if(['mining','salvage','crafting','dismantle'].includes(deepLink.get('division'))){
+    restoringNavigation=true;
+    enterDivision(deepLink.get('division'),deepLink.get('view'));
+    restoringNavigation=false;
+  }
   updateClock();setInterval(updateClock,1000);
   // Smoke-test hooks for the local audit; no network, no privileged capabilities.
-  window.ZTeamTest={parseRS,getMatches,salvage:()=>({ship:$('salvageShip').value,cargo:$('salvageCargo').textContent,buffer:$('salvageBuffer').textContent,raw:$('salvageShipMaterial').textContent,stations:Array.from($('salvageStationList').children).map(n=>n.textContent)}),catalogCount:()=>ORES.length,calculator:()=>({scu:$('outSCU').textContent,formula:$('outFormula').textContent}),getCollection:()=>collection.map(e=>({name:e.name,target:e.target,have:e.have,unit:e.unit})),getDivision:()=>currentDivision};
+  window.ZTeamTest={parseRS,getMatches,salvage:()=>({ship:$('salvageShip').value,cargo:$('salvageCargo').textContent,buffer:$('salvageBuffer').textContent,raw:$('salvageShipMaterial').textContent,stations:Array.from($('salvageStationList').children).map(n=>n.textContent)}),catalogCount:()=>ORES.length,calculator:()=>({scu:$('outSCU').textContent,formula:$('outFormula').textContent}),getCollection:()=>collection.map(e=>({name:e.name,target:e.target,have:e.have,unit:e.unit})),getDivision:()=>currentDivision,getScope:()=>craftScope,getNeeds:()=>needTotals(),getAllocations:()=>Object.fromEntries(allocateCraftStock()),getProjects:()=>craftProjects.map(p=>({name:p.name,items:p.items.length})),dismantlePolicy:()=>({patch:DISM_POLICY.patch,rate:DISM_POLICY.estimatedYield,excluded:[...DISM_POLICY.excluded]}),dismantleEval:(name,qty=20)=>dismEval({name,qty,unit:'cSCU'},1),dismantleObservations:()=>dismObservations.map(o=>({...o}))};
 })();
 
 ;
 
-/* Une copie locale (si disponible) prime sur les URL officielles. Aucun élément inventé par IA. */
+/* Une copie locale (si disponible) prime sur les URL officielles. Visuels officiels uniquement. */
 (function(){
   [['mining','--mining-ship-image','assets/arrastra_officiel.jpg'],['salvage','--salvage-ship-image','assets/moth_officiel.jpg'],['crafting','--crafting-official-image','assets/crafting_officiel.webp'],['dismantle','--dismantle-official-image','assets/demontage_officiel.webp']].forEach(function(x){
     var local=new Image();local.onload=function(){

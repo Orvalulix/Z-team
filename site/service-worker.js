@@ -1,5 +1,5 @@
-const CACHE='zteam-operations-web-v4';
-const SHELL=['./','./index.html','./bootstrap.js','./app.js','./data/update_status.json','./data/update_review.json','./data/mining_data.json','./data/crafting_data.json','./data/uex_sales.json'];
+const CACHE='zteam-craft-center-v2-dismantling';
+const SHELL=['./','./index.html','./bootstrap.js','./app.js','./workspace.js','./data/update_status.json','./data/update_review.json'];
 self.addEventListener('install',event=>{
   event.waitUntil(caches.open(CACHE).then(async cache=>{
     await Promise.all(SHELL.map(path=>cache.add(path).catch(()=>null)));
@@ -8,7 +8,7 @@ self.addEventListener('install',event=>{
 });
 self.addEventListener('activate',event=>{
   event.waitUntil((async()=>{
-    for(const key of await caches.keys())if(key.startsWith('zteam-operations-web-')&&key!==CACHE)await caches.delete(key);
+    for(const key of await caches.keys())if((key.startsWith('zteam-operations-web-')||key.startsWith('zteam-craft-center-'))&&key!==CACHE)await caches.delete(key);
     await self.clients.claim();
   })());
 });

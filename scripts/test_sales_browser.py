@@ -11,7 +11,7 @@ fixture={'meta':{'source':'UEX API 2.0','retrieved_at':'2026-11-25T08:00:00Z','c
  'salvage:rmc':{'commodity':'Recycled Material Composite','spots':[{'terminal':'Terminal Salvage','star_system_name':'Nyx','price_scu':1100,'demand_scu_est':200,'max_scu_observed':640,'report_timestamp':now,'game_version':'4.10.3'}]}
  }}
 with sync_playwright() as p:
- browser=p.chromium.launch(executable_path='/usr/bin/chromium',headless=True,args=['--no-sandbox'])
+ browser=p.chromium.launch(executable_path=('/usr/bin/chromium' if Path('/usr/bin/chromium').exists() else None),headless=True,args=['--no-sandbox'])
  for width in (1440,390):
   page=browser.new_page(viewport={'width':width,'height':900})
   errors=[];page.on('pageerror',lambda err:errors.append(str(err)))

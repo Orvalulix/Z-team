@@ -6,7 +6,7 @@ from test_planner import MOCK,ROOT,HTML,APP
 payload={'format':'ZTeamProject','version':1,'name':'Opération test d’équipe','items':[{'id':'weapons|Test Blueprint 000','qty':3,'name':'Test Blueprint 000'}]}
 token=base64.urlsafe_b64encode(json.dumps(payload,ensure_ascii=False).encode()).decode().rstrip('=')
 with sync_playwright() as p:
-    browser=p.chromium.launch(executable_path='/usr/bin/chromium',headless=True,args=['--no-sandbox'])
+    browser=p.chromium.launch(executable_path=('/usr/bin/chromium' if Path('/usr/bin/chromium').exists() else None),headless=True,args=['--no-sandbox'])
     page=browser.new_page()
     errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
     page.set_content(HTML,wait_until='domcontentloaded')

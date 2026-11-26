@@ -12,7 +12,7 @@ mock={'meta':{'current_patch':'4.10.3','data_updated':'2026-11-17'},'weapons':[
     for i in range(120)]}
 
 with sync_playwright() as p:
-    browser=p.chromium.launch(headless=True, executable_path='/usr/bin/chromium', args=['--no-sandbox'])
+    browser=p.chromium.launch(headless=True, executable_path=('/usr/bin/chromium' if Path('/usr/bin/chromium').exists() else None), args=['--no-sandbox'])
     for width in (1440,390):
         page=browser.new_page(viewport={'width':width,'height':900})
         errors=[]

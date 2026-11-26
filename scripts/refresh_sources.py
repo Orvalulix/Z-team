@@ -97,7 +97,7 @@ def download(name):
 
 def stable_status(previous,site):
   status=previous if isinstance(previous,dict) else {}
-  status.update({'app':'Z-Team Operations Web','version':'V15.6-Web','checked_at':utcnow()})
+  status.update({'app':'Z-Team Craft Center','version':'V16.0-Web','checked_at':utcnow()})
   status.setdefault('sources',{})
   status['notes']='Salvage manuel (4.10.3), méthodes de raffinage estimatives, démontage non assimilable au rendement réel.'
   return status

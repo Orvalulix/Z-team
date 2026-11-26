@@ -20,9 +20,12 @@ expected=(base/'data/original_logo_sha256.txt').read_text('utf-8').split()[0]
 assert sha==expected, 'Le fichier original du logo a changé !'
 for identifier in ('divisionHome','view-prospect','view-scanner','view-calcul','view-salvage','view-crafting','view-dismantle','ztDataGrid','ztProjectsPanel','ztProcurementPanel','ztProcList','ztProcSummary','view-revente','ztSaleCommodity','ztSaleAmount','ztSaleResults'):
     assert identifier in p.ids, 'Onglet manquant: '+identifier
-for ext in ('bootstrap.js','app.js','service-worker.js'):
+for ext in ('bootstrap.js','app.js','workspace.js','service-worker.js'):
     assert (base/ext).is_file(),'Fichier manquant: '+ext
 assert (base/'data/uex_sales.json').is_file(), 'UEX snapshot absent'
 assert (base/'data/update_review.json').is_file(), 'Rapport de validation absent'
 assert '.cmd' not in html.lower(),'Ancienne commande Windows encore dans HTML'
-print('SITE OK — logo SHA256',sha,'— 4 divisions, fichiers web présents')
+assert '<title>Z-Team · craft center</title>' in html, 'Titre Craft Center incorrect'
+assert 'Housing · prochaine extension' in html, 'Extension Housing non annoncée'
+assert 'data-export-workspace' in html and 'ztCraftScope' in p.ids and 'ztSaleFreshness' in p.ids, 'Fonctionnalité essentielle absente'
+print('CRAFT CENTER OK — logo SHA256',sha,'— 4 divisions, fichiers web présents')
